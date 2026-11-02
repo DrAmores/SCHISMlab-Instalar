@@ -41,15 +41,18 @@ jobs:
       - uses: actions/checkout@v4
       - uses: Vampire/setup-wsl@v3
         with: {distribution: Ubuntu-24.04, additional-packages: git curl}
-      - name: Instalador de Windows (WSL entra como root; crea el usuario e instala SCHISMlab)
+      # Los Windows de GitHub solo tienen WSL1, donde pixi no puede renombrar carpetas: aquí se prueba el usuario y la
+      # descarga; el resto de la instalación es instalar.sh, probado en ubuntu-latest (en WSL2 es el mismo Linux)
+      - name: Instalador de Windows (WSL entra como root; crea el usuario y descarga SCHISMlab)
         shell: pwsh
         env:
           SCHISMLAB_TOKEN: ${{ env.TOKEN }}
           SCHISMLAB_LINUX_USER: alumno
+          SCHISMLAB_SOLO_DESCARGAR: "1"
           SCHISMLAB_INSTALAR_URL: https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}/instalar.sh
         run: ./instalar.ps1
-      - name: Comprobar el usuario, el clon y SCHISM dentro de WSL
+      - name: Comprobar el usuario y el clon dentro de WSL
         shell: pwsh
         run: |
-          wsl.exe -d Ubuntu-24.04 -- bash -lc 'test "$(id -un)" = alumno && test -f ~/schismlab/install/install.sh && test -x ~/.schismlab/bin/pschism_hydro && GIT_TERMINAL_PROMPT=0 git -C ~/schismlab pull --ff-only'
+          wsl.exe -d Ubuntu-24.04 -- bash -lc 'test "$(id -un)" = alumno && test -f ~/schismlab/install/install.sh && test -s ~/.schismlab/credentials/github_token && GIT_TERMINAL_PROMPT=0 git -C ~/schismlab pull --ff-only'
           if ($LASTEXITCODE -ne 0) { exit 1 }
