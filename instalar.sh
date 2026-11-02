@@ -23,6 +23,14 @@ export GIT_TERMINAL_PROMPT=0
 
 echo "== SCHISMlab: instalación ($REPO en $DEST)"
 
+# SCHISM se ejecuta con OpenMPI, que no funciona como root: SCHISMlab se instala con un usuario normal
+if [[ "$(id -u)" == "0" && -z "${SCHISMLAB_PERMITIR_ROOT:-}" ]]; then
+  echo "ERROR: estás como root. SCHISMlab se instala con tu usuario normal (OpenMPI no ejecuta SCHISM como root)." >&2
+  echo "       En Windows, vuelve a ejecutar instalar.ps1: crea el usuario de Linux si falta." >&2
+  echo "       En Linux: crea un usuario (sudo adduser nombre), entra con él y vuelve a ejecutar el instalador." >&2
+  exit 1
+fi
+
 # 0. git y curl ---------------------------------------------------------------------
 # en macOS, /usr/bin/git existe aunque falten las Command Line Tools (solo abre un diálogo): se comprueban ellas
 if [[ "$(uname -s)" == "Darwin" ]] && ! xcode-select -p >/dev/null 2>&1; then

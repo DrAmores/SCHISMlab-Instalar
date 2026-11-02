@@ -41,13 +41,15 @@ jobs:
       - uses: actions/checkout@v4
       - uses: Vampire/setup-wsl@v3
         with: {distribution: Ubuntu-24.04, additional-packages: git curl}
-      - name: Instalador de Windows (descarga de SCHISMlab dentro de WSL)
+      - name: Instalador de Windows (WSL entra como root; crea el usuario e instala SCHISMlab)
         shell: pwsh
         env:
           SCHISMLAB_TOKEN: ${{ env.TOKEN }}
-          SCHISMLAB_SOLO_DESCARGAR: "1"
+          SCHISMLAB_LINUX_USER: alumno
           SCHISMLAB_INSTALAR_URL: https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}/instalar.sh
         run: ./instalar.ps1
-      - name: Comprobar el clon dentro de WSL
+      - name: Comprobar el usuario, el clon y SCHISM dentro de WSL
         shell: pwsh
-        run: wsl.exe -d Ubuntu-24.04 -- bash -lc "test -f ~/schismlab/install/install.sh && GIT_TERMINAL_PROMPT=0 git -C ~/schismlab pull --ff-only"
+        run: |
+          wsl.exe -d Ubuntu-24.04 -- bash -lc 'test "$(id -un)" = alumno && test -f ~/schismlab/install/install.sh && test -x ~/.schismlab/bin/pschism_hydro && GIT_TERMINAL_PROMPT=0 git -C ~/schismlab pull --ff-only'
+          if ($LASTEXITCODE -ne 0) { exit 1 }

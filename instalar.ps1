@@ -29,7 +29,30 @@ if ($distros -notcontains $Distro) {
     wsl.exe --install -d $Distro
 }
 
-# 2. instalador de Linux dentro de WSL (pide el token en esta misma ventana) -------------------
+# 2. usuario normal de Linux (SCHISM se ejecuta con OpenMPI, que no funciona como root) --------------------
+$uid = ((wsl.exe -d $Distro -- id -u) -join "").Trim()
+if ($uid -eq "0") {
+    Write-Host ">> En $Distro entras como root: SCHISMlab necesita un usuario normal de Linux. Se crea ahora."
+    $user = $env:SCHISMLAB_LINUX_USER
+    while (-not ($user -match '^[a-z_][a-z0-9_-]{0,31}$')) {
+        $user = (Read-Host "Nombre del usuario de Linux (minúsculas y sin espacios, p. ej. ana)").Trim()
+    }
+    wsl.exe -d $Distro -u root -- bash -c "id -u $user >/dev/null 2>&1 || useradd -m -s /bin/bash -G sudo $user"
+    if (-not $env:SCHISMLAB_LINUX_USER) {
+        Write-Host ">> Elige la contraseña de $user (te la pedirá Linux al instalar paquetes; al escribirla no se ve)"
+        do { wsl.exe -d $Distro -u root -- passwd $user } while ($LASTEXITCODE -ne 0)
+    } else {
+        wsl.exe -d $Distro -u root -- bash -c "echo '$user ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/90-$user"   # sin contraseña: pruebas
+    }
+    # usuario por defecto de la distribución (/etc/wsl.conf, [user] default=...)
+    wsl.exe -d $Distro -u root -- bash -c "touch /etc/wsl.conf; sed -i '/^default=/d' /etc/wsl.conf; grep -q '^\[user\]' /etc/wsl.conf || printf '\n[user]\n' >> /etc/wsl.conf; sed -i 's/^\[user\]/[user]\ndefault=$user/' /etc/wsl.conf"
+    wsl.exe --terminate $Distro | Out-Null
+    $uid = ((wsl.exe -d $Distro -- id -u) -join "").Trim()
+    if ($uid -eq "0") { throw "No se ha podido cambiar el usuario por defecto de $Distro a $user." }
+    Write-Host ">> Usuario $user creado; es el usuario por defecto de $Distro."
+}
+
+# 3. instalador de Linux dentro de WSL (pide el token en esta misma ventana) -------------------
 wsl.exe -d $Distro -- bash -lc "command -v curl >/dev/null || (sudo apt-get update -qq && sudo apt-get install -y -qq curl git); curl -fsSL '$Url' -o /tmp/instalar_schismlab.sh && bash /tmp/instalar_schismlab.sh $Variant"
 if ($LASTEXITCODE -ne 0) { throw "La instalación dentro de WSL ha fallado (mira los mensajes de arriba)." }
 Write-Host "== SCHISMlab instalado en WSL ($Distro). Abre Ubuntu y ejecuta:  cd ~/schismlab && pixi run schismlab gui"
