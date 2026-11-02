@@ -1,0 +1,53 @@
+# Prueba del instalador en Linux, macOS y Windows (WSL). Mientras SCHISMlab Lite es público vale el token del propio
+# flujo; cuando sea privado, guarda un token de prueba (solo lectura de SCHISMlab-Lite) en el secreto
+# SCHISMLAB_TEST_TOKEN de este repositorio.
+name: Prueba del instalador
+on:
+  push: {branches: [main]}
+  workflow_dispatch:
+  schedule: [{cron: "0 6 * * 1"}]          # cada lunes: avisa si caduca el token de prueba o cambia algo en GitHub
+env:
+  TOKEN: ${{ secrets.SCHISMLAB_TEST_TOKEN || github.token }}
+jobs:
+  unix:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Un token malo no descarga nada
+        run: |
+          if SCHISMLAB_TOKEN=github_pat_malo bash instalar.sh < /dev/null; then echo "debería haber fallado"; exit 1; fi
+          test ! -e ~/schismlab && test ! -e ~/.schismlab/credentials/github_token
+      - name: Instalación completa con el token
+        env: {SCHISMLAB_TOKEN: "${{ env.TOKEN }}"}
+        run: bash instalar.sh < /dev/null
+      - name: Comprobar el clon, el token y Actualizar
+        run: |
+          test "$(stat -c %a ~/.schismlab/credentials/github_token 2>/dev/null || stat -f %Lp ~/.schismlab/credentials/github_token)" = 600
+          ! grep -q "$TOKEN" ~/schismlab/.git/config
+          GIT_TERMINAL_PROMPT=0 git -C ~/schismlab pull --ff-only
+          cd ~/schismlab
+          export PATH="$HOME/.pixi/bin:$PATH"
+          pixi run python -m schismlab.access
+          test -x ~/.schismlab/bin/pschism_hydro
+          pixi run python -c "from schismlab.update import check; s = check(force=True); print(s); assert not s.get('error')"
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Vampire/setup-wsl@v3
+        with: {distribution: Ubuntu-24.04, additional-packages: git curl}
+      - name: Instalador de Windows (descarga de SCHISMlab dentro de WSL)
+        shell: pwsh
+        env:
+          SCHISMLAB_TOKEN: ${{ env.TOKEN }}
+          SCHISMLAB_SOLO_DESCARGAR: "1"
+          SCHISMLAB_INSTALAR_URL: https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}/instalar.sh
+        run: ./instalar.ps1
+      - name: Comprobar el clon dentro de WSL
+        shell: pwsh
+        run: wsl.exe -d Ubuntu-24.04 -- bash -lc "test -f ~/schismlab/install/install.sh && GIT_TERMINAL_PROMPT=0 git -C ~/schismlab pull --ff-only"
