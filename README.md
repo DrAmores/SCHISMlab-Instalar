@@ -12,22 +12,19 @@ curl -fsSL https://raw.githubusercontent.com/DrAmores/SCHISMlab-Instalar/main/in
 
 ## Windows 10/11
 
-Abre PowerShell (mejor con botón derecho → *Ejecutar como administrador*) y pega:
+Abre PowerShell (menú Inicio → escribe «PowerShell») y pega:
 
 ```powershell
 Set-ExecutionPolicy -Scope Process Bypass; irm https://raw.githubusercontent.com/DrAmores/SCHISMlab-Instalar/main/instalar.ps1 | iex
 ```
 
-Va por pasos y, si tiene que pararse, lo dice en un recuadro **QUÉ HACER AHORA**. Se puede volver a ejecutar siempre
-que haga falta: sigue por donde iba. En un ordenador sin WSL:
-
-1. Si PowerShell no era de administrador, se abre sola otra ventana como administrador: sigue en ella.
-2. Instala WSL y Ubuntu y pide **reiniciar**. Deja en el escritorio el acceso directo «Continuar instalación de
-   SCHISMlab».
-3. Tras el reinicio puede abrirse una ventana de Ubuntu que pide usuario y contraseña de Linux: rellénalos y ciérrala.
-4. Doble clic en «Continuar instalación de SCHISMlab»: pide el token y lo instala todo (10–30 minutos). No cierres la
-   ventana aunque algún mensaje hable de reiniciar la terminal.
-5. Al terminar, el acceso directo «SCHISMlab» del escritorio abre la interfaz.
+Se abre un **asistente con ventanas** que va por pasos (Ubuntu, usuario de Linux, token, instalación) y dice en cada
+momento lo que hay que hacer. Se puede cerrar y volver a abrir: sigue por donde iba. Si Windows tiene que
+reiniciarse, deja en el escritorio el acceso directo «Continuar instalación de SCHISMlab» para después del reinicio.
+Al terminar, el icono «SCHISMlab» del escritorio y del menú Inicio abre la interfaz (sin ventana negra; se cierra
+desde el menú ⋮ → Cerrar SCHISMlab). Si ya hay Ubuntu, deja elegir entre usarlo o instalar uno nuevo solo para SCHISMlab, con nombre propio (por
+defecto «SCHISMlab»); la primera pantalla tiene *Borrar una instalación de SCHISMlab*, que lo quita entero con sus
+iconos (o `wsl --unregister SCHISMlab`). Con `$env:SCHISMLAB_CONSOLA=1` se hace en la consola, sin ventanas.
 
 ## macOS
 
@@ -43,6 +40,7 @@ terminal; la instalación sigue sola.
 3. Instala el entorno (pixi), descarga o compila SCHISM y ejecuta un caso de prueba.
 
 Al terminar: `cd ~/schismlab && ~/.pixi/bin/pixi run schismlab gui` (en la misma terminal; en las nuevas basta con
-`pixi run schismlab gui`) y se abre <http://localhost:8765>. En Windows, el acceso directo «SCHISMlab».
+`pixi run schismlab gui`) y se abre <http://localhost:8765>. En los tres sistemas, el instalador crea además el icono «SCHISMlab» (escritorio y
+menú), que lo abre sin terminal.
 
 Si el token caduca o te lo retiran, pide uno nuevo y pégalo en la interfaz, en **Instalación → Token de acceso**.
