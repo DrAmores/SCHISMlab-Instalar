@@ -351,6 +351,8 @@ function Show-Install {
     $W.phase = W-Label "Preparando Ubuntu…" 134 9.5 -color $W.gris
     $W.logBox = W-Log 162 190
     if ($W.token) { $env:SCHISMLAB_TOKEN = $W.token; if ($env:WSLENV -notmatch 'SCHISMLAB_TOKEN') { $env:WSLENV = (@($env:WSLENV, "SCHISMLAB_TOKEN/u") | Where-Object { $_ }) -join ":" } }
+    $env:SCHISMLAB_NO_PREGUNTAR = "1"                       # sin terminal: instalar.sh no puede preguntar nada
+    if ($env:WSLENV -notmatch 'SCHISMLAB_NO_PREGUNTAR') { $env:WSLENV = (@($env:WSLENV, "SCHISMLAB_NO_PREGUNTAR/u") | Where-Object { $_ }) -join ":" }
     $user = { W-Run "instalar" "wsl.exe" @("-d", $W.distro, "--", "bash", "-lc", "`"export PYTHONUNBUFFERED=1; curl -fsSL '$Url' -o /tmp/instalar_schismlab.sh && bash /tmp/instalar_schismlab.sh $Variant`"") { param($code) if ($code -eq 0) { Show-Done } else { Show-Failed $code } } }
     if ($W.demo) {
         W-Run "demo" "cmd.exe" @("/c", "for /l %i in (1,1,6) do @(echo ^>^> paso de demostracion %i & ping -n 2 127.0.0.1 >nul)") { param($code) Show-Done }

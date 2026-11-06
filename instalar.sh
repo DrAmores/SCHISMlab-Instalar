@@ -74,10 +74,16 @@ check_token() {   # check_token TOKEN [REPO]  0: acceso; 1: sin acceso o caducad
   esac
 }
 TOKEN="${SCHISMLAB_TOKEN:-}"
+# sin nadie en una terminal (el asistente de Windows, las pruebas automáticas) no se pregunta: si el token no vale, se
+# para con el motivo (si no, read < /dev/tty esperaría para siempre)
+NO_ASK="${SCHISMLAB_NO_PREGUNTAR:-${SCHISMLAB_TOKEN:+1}}"
 if [[ -z "$TOKEN" && -s "$TOKFILE" ]]; then
   TOKEN="$(cat "$TOKFILE")"; echo ">> se usa el token guardado en $TOKFILE"
 fi
 for intento in 1 2 3; do
+  if [[ -z "$TOKEN" && -n "$NO_ASK" ]]; then
+    echo "ERROR: el token no vale (no es válido, ha caducado o no da acceso a $REPO): pide uno nuevo al profesor" >&2; exit 1
+  fi
   if [[ -z "$TOKEN" ]]; then
     if [[ ! -r /dev/tty ]]; then echo "ERROR: sin terminal para pedir el token: usa SCHISMLAB_TOKEN=..." >&2; exit 1; fi
     printf "Pega tu token de acceso a SCHISMlab (empieza por github_pat_; no se ve al pegarlo) y pulsa Intro: " > /dev/tty
