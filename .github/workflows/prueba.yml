@@ -35,6 +35,15 @@ jobs:
           pixi run python -m schismlab.access
           test -x ~/.schismlab/bin/pschism_hydro
           pixi run python -c "from schismlab.update import check; s = check(force=True); print(s); assert not s.get('error')"
+      - name: Desinstalar (los casos se conservan) y comprobar que no queda nada más
+        run: |
+          cd ~/schismlab && export PATH="$HOME/.pixi/bin:$PATH"
+          mkdir -p ~/.schismlab/cases && echo "name: x" > ~/.schismlab/cases/x.yaml
+          SCHISMLAB_NO_PARAR=1 pixi run schismlab desinstalar --si
+          test ! -e ~/schismlab && test ! -e ~/.schismlab/bin && test ! -e ~/.schismlab/credentials
+          test -f ~/.schismlab/cases/x.yaml
+          ! ls -d ~/.cache/rattler/cache/envs/schismlab-* 2>/dev/null
+          cat /tmp/schismlab_desinstalacion.log ${TMPDIR:-/tmp}/schismlab_desinstalacion.log 2>/dev/null | tail -3
   windows:
     runs-on: windows-latest
     steps:

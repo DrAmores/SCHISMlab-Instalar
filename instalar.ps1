@@ -153,7 +153,7 @@ function Show-Welcome {
              "4. La instalación de SCHISMlab: 10-30 minutos, sin que tengas que hacer nada.`n" +
              "5. Al terminar, el icono SCHISMlab en el escritorio y en el menú Inicio.") | Out-Null
     W-Label "Si te vas o se corta algo, vuelve a abrir el instalador: sigue por donde iba." 9.5 -color $W.gris | Out-Null
-    $l = New-Object Windows.Forms.LinkLabel; $l.Text = "Borrar una instalación de SCHISMlab (por ejemplo, una de prueba)"
+    $l = New-Object Windows.Forms.LinkLabel; $l.Text = "Desinstalar SCHISMlab (o borrar una instalación de prueba)"
     $l.Left = 28; $l.Top = $W.y + 6; $l.AutoSize = $true; $l.Add_LinkClicked({ Show-Uninstall }); $W.body.Controls.Add($l)
     $W.onNext = { Show-Wsl }
 }
@@ -172,6 +172,7 @@ function Show-Wsl {
     # elección hecha (por SCHISMLAB_DISTRO, el acceso directo de después del reinicio o Atrás): seguir con ella
     $ready = if ($W.demo) { $W.chosen } else { $W.chosen -and (Test-Distro $W.distro) }
     if ($ready -or ($env:SCHISMLAB_DISTRO -and -not $W.demo -and (Test-Distro $W.distro))) {
+        if ($env:SCHISMLAB_DISTRO) { Mark-Dedicated }
         W-Label "$MarkOk «$($W.distro)» está instalado y funciona." 11 -color $W.verde | Out-Null
         W-Button "Elegir otro" 160 | ForEach-Object { $_.Add_Click({ $W.chosen = $false; $env:SCHISMLAB_DISTRO = $null; Show-Wsl }) }
         $W.next.Enabled = $true; $W.onNext = { Show-User }; return
@@ -232,43 +233,88 @@ function Show-Wsl {
         $env:WSL_UTF8 = "1"
         W-Run "wsl" "wsl.exe" (@("--install", "-d", $W.base) + $named + @("--no-launch")) {
             param($code)
-            if (Test-Distro $W.distro) { Show-User } else { Show-Reboot }
+            if (Test-Distro $W.distro) { Mark-Dedicated; Show-User } else { Show-Reboot }
         }
     }
 }
 
+function Mark-Dedicated {
+    # el Ubuntu se creó solo para SCHISMlab: la desinstalación (Instalación $Fl Desinstalar, o esta pantalla) ofrece
+    # borrarlo entero; sin la marca solo se borra lo de SCHISMlab dentro
+    if ($W.chosen -and $W.distro -ne $W.base -and -not $W.demo) {
+        wsl.exe -d $W.distro -u root -- bash -c "echo '$($W.distro)' > /etc/schismlab_dedicado" 2>$null
+    }
+}
+
 function Show-Uninstall {
-    W-Page 0 "Borrar una instalación"
-    W-Label "Borrar una instalación de SCHISMlab" 14 -Bold | Out-Null
+    W-Page 0 "Desinstalar"
+    W-Label "Desinstalar SCHISMlab" 14 -Bold | Out-Null
     $W.onBack = { Show-Welcome }
-    W-Label "Borra un Ubuntu entero (con SCHISMlab, sus casos y sus resultados) y los iconos de SCHISMlab que lo abren. No se puede deshacer: copia antes lo que quieras conservar." | Out-Null
+    W-Label "Elige el Ubuntu donde está SCHISMlab. Si se creó solo para SCHISMlab, se borra entero (con sus iconos); si es tu Ubuntu de siempre, se quita solo lo de SCHISMlab y los casos y resultados se conservan salvo que marques la casilla. No se puede deshacer." | Out-Null
     $W.pick = New-Object Windows.Forms.ComboBox; $W.pick.DropDownStyle = "DropDownList"; $W.pick.Left = 28; $W.pick.Top = $W.y; $W.pick.Width = 300
     Get-Distros | ForEach-Object { [void]$W.pick.Items.Add($_) }
     $W.body.Controls.Add($W.pick); $W.y = $W.pick.Bottom + 12
+    $W.what = W-Label "" -Reserve 2 9.5 -color $W.gris
+    $W.casesCb = New-Object Windows.Forms.CheckBox; $W.casesCb.Text = "Borrar también mis casos y resultados"; $W.casesCb.Left = 28; $W.casesCb.Top = $W.y; $W.casesCb.AutoSize = $true
+    $W.body.Controls.Add($W.casesCb); $W.y = $W.casesCb.Bottom + 12
+    $W.msg = W-Label "" -Reserve 2
+    $W.logBox = W-Log 200; $W.logBox.Visible = $false
+    $W.next.Text = "Desinstalar"; $W.next.BackColor = $W.naranja
+    function Test-Dedicated($n) {
+        if ($W.demo) { return ($n -like "SCHISMlab*") }
+        if ($n -like "SCHISMlab*") { return $true }
+        wsl.exe -d $n -- test -f /etc/schismlab_dedicado 2>$null; return ($LASTEXITCODE -eq 0)
+    }
+    $W.describe = {
+        $n = [string]$W.pick.SelectedItem
+        if (-not $n) { $W.what.Text = ""; return }
+        $W.ded = Test-Dedicated $n
+        $W.what.Text = if ($W.ded) { "«$n» se creó solo para SCHISMlab: se borrará entero, con todo lo que tiene dentro." } else { "«$n» es un Ubuntu de uso general: solo se quitará SCHISMlab de dentro." }
+        $W.casesCb.Visible = -not $W.ded
+    }
+    $W.pick.Add_SelectedIndexChanged({ & $W.describe })
     $first = @($W.pick.Items | Where-Object { $_ -like "SCHISMlab*" })[0]
     if ($first) { $W.pick.SelectedItem = $first }         # si no hay ninguno «SCHISMlab…», no se preselecciona nada
-    $W.msg = W-Label "" -Reserve 2
-    $W.next.Text = "Borrar"; $W.next.BackColor = $W.naranja
+    & $W.describe
     $W.onNext = {
         $n = [string]$W.pick.SelectedItem
-        if (-not $n) { $W.msg.ForeColor = $W.naranja; $W.msg.Text = "Elige el Ubuntu que quieres borrar."; return }
-        $r = [Windows.Forms.MessageBox]::Show("Se va a borrar el Ubuntu «$n» entero, con todo lo que tiene dentro. ¿Seguro?", "SCHISMlab", "YesNo", "Warning")
-        if ($r -ne "Yes") { return }
-        if (-not $W.demo) { wsl.exe --terminate $n *> $null; wsl.exe --unregister $n *> $null }
-        $gone = @()
-        foreach ($d in @([Environment]::GetFolderPath("Desktop"), [Environment]::GetFolderPath("Programs"))) {
-            foreach ($f in @("SCHISMlab.lnk", "$ContinueName.lnk")) {
-                $p = Join-Path $d $f
-                if (Test-Path $p) {
-                    $a = (New-Object -ComObject WScript.Shell).CreateShortcut($p).Arguments
-                    if ($a -match "-d $([regex]::Escape($n))( |$)" -or $f -ne "SCHISMlab.lnk") { if (-not $W.demo) { Remove-Item $p }; $gone += $f }
-                }
+        if (-not $n) { $W.msg.ForeColor = $W.naranja; $W.msg.Text = "Elige el Ubuntu donde está SCHISMlab."; return }
+        $txt = if ($W.ded) { "Se va a borrar el Ubuntu «$n» entero, con todo lo que tiene dentro. ¿Seguro?" }
+               else { "Se va a quitar SCHISMlab del Ubuntu «$n»" + $(if ($W.casesCb.Checked) { ", incluidos tus casos y resultados" } else { " (tus casos y resultados se conservan)" }) + ". ¿Seguir?" }
+        if ([Windows.Forms.MessageBox]::Show($txt, "SCHISMlab", "YesNo", "Warning") -ne "Yes") { return }
+        $W.next.Enabled = $false; $W.back.Enabled = $false
+        if ($W.ded) {
+            if (-not $W.demo) { wsl.exe --terminate $n *> $null; wsl.exe --unregister $n *> $null }
+            Remove-SchismlabShortcuts $n
+            $W.msg.ForeColor = $W.verde; $W.msg.Text = "$MarkOk Borrado el Ubuntu «$n» y sus iconos."
+            $W.pick.Items.Remove($n); $W.next.Enabled = $true; $W.back.Enabled = $true; return
+        }
+        $W.logBox.Visible = $true
+        $flags = if ($W.casesCb.Checked) { "--casos" } else { "" }
+        $cmd = "cd ~/schismlab 2>/dev/null && ~/.pixi/bin/pixi run schismlab desinstalar --si $flags || echo 'SCHISMlab no está instalado en este Ubuntu (no hay ~/schismlab)'"
+        if ($W.demo) { W-Run "desinstalar" "cmd.exe" @("/c", "echo == desinstalacion de SCHISMlab (demostracion) & ping -n 2 127.0.0.1 >nul & echo == SCHISMlab desinstalado") { param($code) Remove-SchismlabShortcuts $n; $W.msg.ForeColor = $W.verde; $W.msg.Text = "$MarkOk SCHISMlab quitado de «$n»."; $W.back.Enabled = $true }; return }
+        W-Run "desinstalar" "wsl.exe" @("-d", $n, "--", "bash", "-lc", "`"$cmd`"") {
+            param($code)
+            Remove-SchismlabShortcuts $n
+            if ($code -eq 0) { $W.msg.ForeColor = $W.verde; $W.msg.Text = "$MarkOk SCHISMlab quitado de «$n» (iconos incluidos)." }
+            else { $W.msg.ForeColor = $W.naranja; $W.msg.Text = "Algo ha fallado: mira las últimas líneas." }
+            $W.back.Enabled = $true
+        }
+    }
+}
+
+function Remove-SchismlabShortcuts($n) {
+    # los iconos que abren ese Ubuntu (o todos los de seguir la instalación)
+    foreach ($d in @([Environment]::GetFolderPath("Desktop"), [Environment]::GetFolderPath("Programs"))) {
+        foreach ($f in @("SCHISMlab.lnk", "$ContinueName.lnk")) {
+            $p = Join-Path $d $f
+            if (Test-Path $p) {
+                $a = (New-Object -ComObject WScript.Shell).CreateShortcut($p).Arguments
+                if ($a -match "-d $([regex]::Escape($n))( |$)" -or $f -ne "SCHISMlab.lnk") { if (-not $W.demo) { Remove-Item $p } }
             }
         }
-        $W.msg.ForeColor = $W.verde
-        $W.msg.Text = "$MarkOk Borrado «$n»" + $(if ($gone) { " y sus iconos." } else { "." })
-        $W.pick.Items.Remove($n)
     }
+    if (-not $W.demo) { Remove-Item -Recurse -Force -ErrorAction SilentlyContinue (Join-Path $env:LOCALAPPDATA "SCHISMlab") }
 }
 
 function Show-Reboot {
@@ -489,7 +535,7 @@ function Start-DemoCapture {
             if ($W.extra.Count) { $x = $W.extra[0]; $W.extra = @($W.extra | Select-Object -Skip 1); if ($x -eq "reboot") { Show-Reboot } elseif ($x -eq "uninstall") { Show-Uninstall } else { Show-Failed 1 } ; return }
             $W.cap.Stop(); $W.openNow.Checked = $false; $W.next.PerformClick(); return
         }
-        if ($W.page -in @("Reiniciar", "La instalación se ha parado", "Borrar una instalación")) { Show-Done; $W.extra = @($W.extra); return }
+        if ($W.page -in @("Reiniciar", "La instalación se ha parado", "Desinstalar")) { Show-Done; $W.extra = @($W.extra); return }
         if ($W.next.Enabled) { $W.next.PerformClick() }
     })
     $W.cap.Start()

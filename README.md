@@ -24,8 +24,7 @@ Se abre un **asistente con ventanas** que va por pasos y dice en cada momento lo
 5. **Listo**: el icono «SCHISMlab» del escritorio y del menú Inicio abre la interfaz en el navegador, sin ninguna
    ventana negra. Se cierra desde el menú ⋮ → Cerrar SCHISMlab.
 
-Se puede cerrar y volver a abrir: sigue por donde iba. La primera pantalla tiene *Borrar una instalación de
-SCHISMlab*, que quita entero un Ubuntu con sus iconos (o, a mano, `wsl --unregister <nombre>`). Con
+Se puede cerrar y volver a abrir: sigue por donde iba. Con
 `$env:SCHISMLAB_CONSOLA=1` antes de la orden se hace en la consola, sin ventanas.
 
 ## Linux y macOS
@@ -38,6 +37,13 @@ Pide el token (al pegarlo no se ve) y lo instala todo. En macOS, si faltan las *
 una ventana para instalarlas: pulsa *Instalar* y no cierres la terminal; la instalación sigue sola. Al terminar queda
 el icono «SCHISMlab» (menú de aplicaciones en Linux; `~/Applications` y Launchpad en macOS). Desde la terminal:
 `cd ~/schismlab && ~/.pixi/bin/pixi run schismlab gui`.
+
+## Desinstalar
+
+En la interfaz, **Instalación → Desinstalar SCHISMlab** (los casos y resultados se conservan salvo que marques la
+casilla), o `pixi run schismlab desinstalar`. En Windows, el instalador tiene en su primera pantalla *Desinstalar
+SCHISMlab*: borra entero el Ubuntu que se creó para SCHISMlab o, si está en tu Ubuntu de siempre, solo lo de
+SCHISMlab.
 
 ## Qué hace
 
