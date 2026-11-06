@@ -55,34 +55,38 @@ $ProRepo = if ($env:SCHISMLAB_PRO_REPO) { $env:SCHISMLAB_PRO_REPO } else { "DrAm
 $IcoUrl = ($Url -replace '[^/]+$', '') + "schismlab.ico"
 $PngUrl = ($Url -replace '[^/]+$', '') + "schismlab.png"
 
-function W-Label($text, $y, $size = 10, [switch]$Bold, $color = $null, $height = 0) {
+function W-Label($text, $size = 10, [switch]$Bold, $color = $null, $gap = 10, $Reserve = 0) {
+    # texto en el cursor $W.y, con su altura real (se ajusta al ancho); -Reserve N deja sitio para N líneas que se
+    # escriben después (mensajes); lo siguiente se coloca debajo
     $l = New-Object Windows.Forms.Label
-    $l.Text = $text; $l.Left = 28; $l.Top = $y; $l.Width = 660; $l.AutoSize = $false
+    $l.Text = $text; $l.Left = 28; $l.Top = $W.y; $l.BackColor = [Drawing.Color]::Transparent
     $style = if ($Bold) { [Drawing.FontStyle]::Bold } else { [Drawing.FontStyle]::Regular }
     $l.Font = New-Object Drawing.Font("Segoe UI", $size, $style)
     if ($color) { $l.ForeColor = $color }
-    $l.Height = if ($height) { $height } else { [Math]::Max(24, [int]($l.PreferredHeight * [Math]::Ceiling($l.PreferredWidth / 650.0)) + 4) }
-    $W.body.Controls.Add($l); return $l
+    if ($Reserve) { $l.AutoSize = $false; $l.Width = 660; $l.Height = [int]($l.Font.Height * $Reserve + 4) }
+    else { $l.AutoSize = $true; $l.MaximumSize = New-Object Drawing.Size(660, 0); $l.MinimumSize = New-Object Drawing.Size(660, 0) }
+    $W.body.Controls.Add($l); $W.y = $l.Bottom + $gap; return $l
 }
-function W-Input($label, $y, [switch]$Secret) {
-    W-Label $label $y 9.5 | Out-Null
+function W-Input($label, [switch]$Secret) {
+    W-Label $label 9.5 -gap 3 | Out-Null
     $t = New-Object Windows.Forms.TextBox
-    $t.Left = 28; $t.Top = $y + 24; $t.Width = 420; $t.Font = New-Object Drawing.Font("Segoe UI", 11)
+    $t.Left = 28; $t.Top = $W.y; $t.Width = 420; $t.Font = New-Object Drawing.Font("Segoe UI", 11)
     if ($Secret) { $t.UseSystemPasswordChar = $true }
-    $W.body.Controls.Add($t); return $t
+    $W.body.Controls.Add($t); $W.y = $t.Bottom + 14; return $t
 }
-function W-Button($text, $x, $y, $width = 220) {     # ojo: $w sería $W (PowerShell no distingue mayúsculas)
+function W-Button($text, $width = 220) {     # ojo: un parámetro $w sería $W (PowerShell no distingue mayúsculas)
     $b = New-Object Windows.Forms.Button
-    $b.Text = $text; $b.Left = $x; $b.Top = $y; $b.Width = $width; $b.Height = 34
+    $b.Text = $text; $b.Left = 28; $b.Top = $W.y; $b.Width = $width; $b.Height = 34
     $b.FlatStyle = "Flat"; $b.BackColor = $W.grafito; $b.ForeColor = [Drawing.Color]::White
-    $W.body.Controls.Add($b); return $b
+    $W.body.Controls.Add($b); $W.y = $b.Bottom + 12; return $b
 }
-function W-Log($y, $h) {
+function W-Log($height) {
     $t = New-Object Windows.Forms.TextBox
     $t.Multiline = $true; $t.ReadOnly = $true; $t.ScrollBars = "Vertical"; $t.WordWrap = $false
-    $t.Left = 28; $t.Top = $y; $t.Width = 660; $t.Height = $h; $t.BackColor = [Drawing.Color]::FromArgb(247, 247, 247)
-    $t.Font = New-Object Drawing.Font("Consolas", 8.5)
-    $W.body.Controls.Add($t); return $t
+    $free = $W.body.ClientSize.Height - $W.y - 12          # que no se salga por abajo
+    $t.Left = 28; $t.Top = $W.y; $t.Width = 660; $t.Height = [Math]::Max(60, [Math]::Min($height, $free))
+    $t.BackColor = [Drawing.Color]::FromArgb(247, 247, 247); $t.Font = New-Object Drawing.Font("Consolas", 8.5)
+    $W.body.Controls.Add($t); $W.y = $t.Bottom + 12; return $t
 }
 function W-Page($n, $title, $next = "Siguiente", [switch]$NoBack) {
     # pantalla nueva: título del paso en la cabecera y botones del pie
@@ -90,6 +94,7 @@ function W-Page($n, $title, $next = "Siguiente", [switch]$NoBack) {
     $W.next.Focus() | Out-Null
     $old = @($W.body.Controls); $W.body.Controls.Clear(); $old | ForEach-Object { $_.Dispose() }
     $W.step.Text = if ($n) { "Paso $n de 5 · $title" } else { $title }
+    $W.y = 22; $W.next.BackColor = $W.turquesa
     $W.next.Text = $next; $W.next.Enabled = $true; $W.next.Visible = $true
     $W.back.Visible = -not $NoBack; $W.back.Enabled = $true; $W.cancel.Enabled = $true
     $W.onNext = $null; $W.onBack = $null; $W.page = $title
@@ -101,6 +106,7 @@ function W-Run($label, $file, $arguments, $onDone) {
     Remove-Item -ErrorAction SilentlyContinue $log, $err
     $W.proc = Start-Process -FilePath $file -ArgumentList $arguments -WindowStyle Hidden -PassThru -WorkingDirectory $env:TEMP `
         -RedirectStandardOutput $log -RedirectStandardError $err
+    $null = $W.proc.Handle          # sin guardar el handle, Start-Process -PassThru no da el código de salida (sale vacío)
     $W.runLog = $log; $W.runErr = $err; $W.runPos = 0; $W.runErrPos = 0; $W.onDone = $onDone
     Add-Content -Path $W.fullLog -Value "`r`n===== $label ($(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')) =====" -Encoding UTF8
     $W.timer.Start()
@@ -128,7 +134,8 @@ function W-Tick {
         if ($last -and $W.phase -and -not $W.phase.IsDisposed) { $W.phase.Text = ($last -replace '^(>>|==) ', '') }
     }
     if ($W.proc -and $W.proc.HasExited) {
-        $W.timer.Stop(); $code = $W.proc.ExitCode; $W.proc = $null
+        $W.timer.Stop(); $W.proc.WaitForExit(); $code = $W.proc.ExitCode; $W.proc = $null
+        Add-Content -Path $W.fullLog -Value "`r`n----- terminado con código $code" -Encoding UTF8
         & $W.onDone $code
     }
 }
@@ -137,17 +144,17 @@ function W-Wsl([string[]]$a) { if ($W.demo) { return "" } ; return ((& wsl.exe @
 # ---------------------------------------------------------------------------------------------------------- pantallas
 function Show-Welcome {
     W-Page 0 "Bienvenida" -NoBack
-    W-Label "Instalar SCHISMlab" 24 16 -Bold | Out-Null
-    W-Label "SCHISMlab es el entorno de las prácticas de modelado del océano con SCHISM. Funciona dentro de Ubuntu (WSL2), que este asistente instala si hace falta." 66 | Out-Null
-    W-Label "Lo que va a pasar:" 130 10 -Bold | Out-Null
+    W-Label "Instalar SCHISMlab" 16 -Bold | Out-Null
+    W-Label "SCHISMlab es el entorno de las prácticas de modelado del océano con SCHISM. Funciona dentro de Ubuntu (WSL2), que este asistente instala si hace falta." | Out-Null
+    W-Label "Lo que va a pasar:" 10 -Bold | Out-Null
     W-Label ("1. Ubuntu (WSL2). Si no estaba, se instala; puede que haya que reiniciar el ordenador una vez.`n" +
              "2. Un usuario de Linux, con su contraseña.`n" +
              "3. Tu token de acceso: te lo da el profesor (empieza por github_pat_).`n" +
              "4. La instalación de SCHISMlab: 10-30 minutos, sin que tengas que hacer nada.`n" +
-             "5. Al terminar, el icono SCHISMlab en el escritorio y en el menú Inicio.") 156 10 -height 130 | Out-Null
-    W-Label "Si te vas o se corta algo, vuelve a abrir el instalador: sigue por donde iba." 300 9.5 -color $W.gris | Out-Null
+             "5. Al terminar, el icono SCHISMlab en el escritorio y en el menú Inicio.") | Out-Null
+    W-Label "Si te vas o se corta algo, vuelve a abrir el instalador: sigue por donde iba." 9.5 -color $W.gris | Out-Null
     $l = New-Object Windows.Forms.LinkLabel; $l.Text = "Borrar una instalación de SCHISMlab (por ejemplo, una de prueba)"
-    $l.Left = 28; $l.Top = 336; $l.Width = 600; $l.Add_LinkClicked({ Show-Uninstall }); $W.body.Controls.Add($l)
+    $l.Left = 28; $l.Top = $W.y + 6; $l.AutoSize = $true; $l.Add_LinkClicked({ Show-Uninstall }); $W.body.Controls.Add($l)
     $W.onNext = { Show-Wsl }
 }
 
@@ -159,22 +166,22 @@ function Get-Distros {
 
 function Show-Wsl {
     W-Page 1 "Ubuntu (WSL2)"
-    W-Label "Ubuntu dentro de Windows" 24 14 -Bold | Out-Null
+    W-Label "Ubuntu dentro de Windows" 14 -Bold | Out-Null
     $W.next.Enabled = $false; $W.onBack = { Show-Welcome }
     $distros = Get-Distros
     # elección hecha (por SCHISMLAB_DISTRO, el acceso directo de después del reinicio o Atrás): seguir con ella
     $ready = if ($W.demo) { $W.chosen } else { $W.chosen -and (Test-Distro $W.distro) }
     if ($ready -or ($env:SCHISMLAB_DISTRO -and -not $W.demo -and (Test-Distro $W.distro))) {
-        W-Label "$MarkOk «$($W.distro)» está instalado y funciona." 70 11 -color $W.verde | Out-Null
-        W-Button "Elegir otro" 28 110 160 | ForEach-Object { $_.Add_Click({ $W.chosen = $false; $env:SCHISMLAB_DISTRO = $null; Show-Wsl }) }
+        W-Label "$MarkOk «$($W.distro)» está instalado y funciona." 11 -color $W.verde | Out-Null
+        W-Button "Elegir otro" 160 | ForEach-Object { $_.Add_Click({ $W.chosen = $false; $env:SCHISMLAB_DISTRO = $null; Show-Wsl }) }
         $W.next.Enabled = $true; $W.onNext = { Show-User }; return
     }
     $wslOk = $W.demo
     if (-not $W.demo) { try { wsl.exe --status *> $null; $wslOk = ($LASTEXITCODE -eq 0) } catch {} }
     if (-not $wslOk -and -not (Test-Admin)) {
-        W-Label "Hay que instalar WSL, y eso necesita permiso de administrador." 70 | Out-Null
-        W-Label "Al pulsar el botón, Windows pregunta si permites los cambios: pulsa «Sí». El instalador se vuelve a abrir con permiso y sigue desde aquí." 100 | Out-Null
-        $b = W-Button "Continuar como administrador" 28 170 260
+        W-Label "Hay que instalar WSL, y eso necesita permiso de administrador." | Out-Null
+        W-Label "Al pulsar el botón, Windows pregunta si permites los cambios: pulsa «Sí». El instalador se vuelve a abrir con permiso y sigue desde aquí." | Out-Null
+        $b = W-Button "Continuar como administrador" 260
         $b.Add_Click({
             try {
                 Start-Process powershell.exe -Verb RunAs -ArgumentList "-ExecutionPolicy", "Bypass", "-Command", "irm $Ps1Url | iex"
@@ -184,27 +191,30 @@ function Show-Wsl {
         return
     }
     $W.optUse = $null
-    $y = 66
     if ($distros.Count) {
-        W-Label "Este ordenador ya tiene Ubuntu. Puedes instalar SCHISMlab en uno de ellos o en un Ubuntu nuevo, solo para SCHISMlab: así queda separado y se puede borrar entero cuando quieras (en la primera pantalla del instalador)." $y | Out-Null
-        $y += 62
-        $W.optUse = New-Object Windows.Forms.RadioButton; $W.optUse.Text = "Usar el que ya hay:"; $W.optUse.Left = 28; $W.optUse.Top = $y; $W.optUse.Width = 200
-        $W.pick = New-Object Windows.Forms.ComboBox; $W.pick.DropDownStyle = "DropDownList"; $W.pick.Left = 232; $W.pick.Top = $y - 2; $W.pick.Width = 240
+        W-Label "Este ordenador ya tiene Ubuntu. Puedes instalar SCHISMlab en uno de ellos o en un Ubuntu nuevo, solo para SCHISMlab: así queda separado y se puede borrar entero cuando quieras (en la primera pantalla del instalador)." | Out-Null
+        $y = $W.y
+        $W.optUse = New-Object Windows.Forms.RadioButton; $W.optUse.Text = "Usar el que ya hay:"; $W.optUse.Left = 28; $W.optUse.Top = $y; $W.optUse.AutoSize = $true
+        $W.pick = New-Object Windows.Forms.ComboBox; $W.pick.DropDownStyle = "DropDownList"; $W.pick.Left = 360; $W.pick.Top = $y - 2; $W.pick.Width = 260
         $distros | ForEach-Object { [void]$W.pick.Items.Add($_) }
         $W.pick.SelectedItem = if ($distros -contains $Distro) { $Distro } else { $distros[0] }
-        $W.body.Controls.AddRange(@($W.optUse, $W.pick)); $y += 36
+        $W.body.Controls.AddRange(@($W.optUse, $W.pick)); $y = [Math]::Max($W.optUse.Bottom, $W.pick.Bottom) + 12
     } else {
-        W-Label "Se va a instalar Ubuntu (unos minutos; la descarga ocupa ~500 MB)." $y | Out-Null; $y += 36
+        W-Label "Se va a instalar Ubuntu (unos minutos; la descarga ocupa ~500 MB)." | Out-Null; $y = $W.y
     }
-    $W.optNew = New-Object Windows.Forms.RadioButton; $W.optNew.Text = "Instalar un Ubuntu nuevo, con el nombre:"; $W.optNew.Left = 28; $W.optNew.Top = $y; $W.optNew.Width = 300
-    $W.newName = New-Object Windows.Forms.TextBox; $W.newName.Left = 332; $W.newName.Top = $y - 2; $W.newName.Width = 200
+    $W.optNew = New-Object Windows.Forms.RadioButton; $W.optNew.Text = "Instalar un Ubuntu nuevo, con el nombre:"; $W.optNew.Left = 28; $W.optNew.Top = $y; $W.optNew.AutoSize = $true
+    $W.newName = New-Object Windows.Forms.TextBox; $W.newName.Left = 360; $W.newName.Top = $y - 2; $W.newName.Width = 260
     $W.newName.Text = if ($distros -notcontains "SCHISMlab") { "SCHISMlab" } else { "SCHISMlab-" + (Get-Date -Format "MMdd-HHmm") }
     $W.body.Controls.AddRange(@($W.optNew, $W.newName))
+    # las casillas, a la derecha del texto más largo de las dos opciones (con cualquier tamaño de letra de Windows)
+    $x = [Math]::Max($W.optNew.Right, $(if ($W.optUse) { $W.optUse.Right } else { 0 })) + 12
+    $W.newName.Left = $x; if ($W.pick) { $W.pick.Left = $x }
+    $W.y = [Math]::Max($W.optNew.Bottom, $W.newName.Bottom) + 12
     if ($W.optUse) { $W.optUse.Checked = $true } else { $W.optNew.Checked = $true; $W.optNew.Visible = $false; $W.newName.Visible = $false; $W.newName.Text = $Distro }
     $W.newName.Add_TextChanged({ $W.optNew.Checked = $true }); if ($W.pick) { $W.pick.Add_SelectedIndexChanged({ $W.optUse.Checked = $true }) }
-    $W.msg = W-Label "" ($y + 34) 9.5 -color $W.naranja
-    $W.phase = W-Label "" ($y + 60) 9.5 -color $W.gris
-    $W.logBox = W-Log ($y + 88) ([Math]::Max(80, 372 - ($y + 88))); $W.logBox.Visible = $false
+    $W.msg = W-Label "" -Reserve 2 9.5 -color $W.naranja -gap 0
+    $W.phase = W-Label "" -Reserve 1 9.5 -color $W.gris -gap 4
+    $W.logBox = W-Log 400; $W.logBox.Visible = $false
     $W.next.Enabled = $true; $W.next.Text = "Siguiente"
     $W.onNext = {
         if ($W.optUse -and $W.optUse.Checked) {
@@ -229,15 +239,15 @@ function Show-Wsl {
 
 function Show-Uninstall {
     W-Page 0 "Borrar una instalación"
-    W-Label "Borrar una instalación de SCHISMlab" 24 14 -Bold | Out-Null
+    W-Label "Borrar una instalación de SCHISMlab" 14 -Bold | Out-Null
     $W.onBack = { Show-Welcome }
-    W-Label "Borra un Ubuntu entero (con SCHISMlab, sus casos y sus resultados) y los iconos de SCHISMlab que lo abren. No se puede deshacer: copia antes lo que quieras conservar." 66 | Out-Null
-    $W.pick = New-Object Windows.Forms.ComboBox; $W.pick.DropDownStyle = "DropDownList"; $W.pick.Left = 28; $W.pick.Top = 130; $W.pick.Width = 300
+    W-Label "Borra un Ubuntu entero (con SCHISMlab, sus casos y sus resultados) y los iconos de SCHISMlab que lo abren. No se puede deshacer: copia antes lo que quieras conservar." | Out-Null
+    $W.pick = New-Object Windows.Forms.ComboBox; $W.pick.DropDownStyle = "DropDownList"; $W.pick.Left = 28; $W.pick.Top = $W.y; $W.pick.Width = 300
     Get-Distros | ForEach-Object { [void]$W.pick.Items.Add($_) }
-    $W.body.Controls.Add($W.pick)
+    $W.body.Controls.Add($W.pick); $W.y = $W.pick.Bottom + 12
     $first = @($W.pick.Items | Where-Object { $_ -like "SCHISMlab*" })[0]
     if ($first) { $W.pick.SelectedItem = $first }         # si no hay ninguno «SCHISMlab…», no se preselecciona nada
-    $W.msg = W-Label "" 170 10
+    $W.msg = W-Label "" -Reserve 2
     $W.next.Text = "Borrar"; $W.next.BackColor = $W.naranja
     $W.onNext = {
         $n = [string]$W.pick.SelectedItem
@@ -263,10 +273,10 @@ function Show-Uninstall {
 
 function Show-Reboot {
     W-Page 1 "Reiniciar" "Reiniciar ahora" -NoBack
-    W-Label "Hay que reiniciar el ordenador" 24 14 -Bold | Out-Null
-    W-Label "Windows necesita reiniciarse para terminar de instalar WSL." 70 | Out-Null
-    W-Label "Después del reinicio, haz doble clic en el icono «$ContinueName» del escritorio: el instalador se abre y sigue por donde iba." 104 | Out-Null
-    W-Label "Puede que tras el reinicio se abra sola una ventana de Ubuntu que pide un nombre de usuario: si aparece, ciérrala (el usuario se crea en el paso siguiente del instalador)." 170 9.5 -color $W.gris | Out-Null
+    W-Label "Hay que reiniciar el ordenador" 14 -Bold | Out-Null
+    W-Label "Windows necesita reiniciarse para terminar de instalar WSL." | Out-Null
+    W-Label "Después del reinicio, haz doble clic en el icono «$ContinueName» del escritorio: el instalador se abre y sigue por donde iba." | Out-Null
+    W-Label "Puede que tras el reinicio se abra sola una ventana de Ubuntu que pide un nombre de usuario: si aparece, ciérrala (el usuario se crea en el paso siguiente del instalador)." 9.5 -color $W.gris | Out-Null
     if (-not $W.demo) { New-Shortcut $ContinueName "powershell.exe" "-ExecutionPolicy Bypass -Command `"`$env:SCHISMLAB_DISTRO='$($W.distro)'; irm $Ps1Url | iex`"" "Sigue la instalación de SCHISMlab" | Out-Null }
     $W.cancel.Text = "Reiniciar más tarde"
     $W.onNext = { if (-not $W.demo) { Restart-Computer -Force } ; $W.form.Close() }
@@ -274,19 +284,19 @@ function Show-Reboot {
 
 function Show-User {
     W-Page 2 "Usuario de Linux"
-    W-Label "Usuario de Linux" 24 14 -Bold | Out-Null
+    W-Label "Usuario de Linux" 14 -Bold | Out-Null
     $W.onBack = { Show-Wsl }
     $uid = if ($W.demo) { "0" } else { W-Wsl @("-d", $W.distro, "--", "id", "-u") }
     if ($uid -ne "0") {
         $name = W-Wsl @("-d", $W.distro, "--", "id", "-un")
-        W-Label "$MarkOk Ubuntu ya tiene usuario: $name" 70 11 -color $W.verde | Out-Null
+        W-Label "$MarkOk Ubuntu ya tiene usuario: $name" 11 -color $W.verde | Out-Null
         $W.onNext = { Show-Token }; return
     }
-    W-Label "SCHISM no puede ejecutarse como administrador (root): hace falta un usuario normal de Linux. Elige un nombre (minúsculas, sin espacios ni acentos) y una contraseña; Linux la pide para instalar programas." 66 | Out-Null
-    $u = W-Input "Nombre de usuario (p. ej. ana)" 130
-    $p1 = W-Input "Contraseña" 190 -Secret
-    $p2 = W-Input "Repite la contraseña" 250 -Secret
-    $msg = W-Label "" 316 9.5 -color $W.naranja
+    W-Label "SCHISM no puede ejecutarse como administrador (root): hace falta un usuario normal de Linux. Elige un nombre (minúsculas, sin espacios ni acentos) y una contraseña; Linux la pide para instalar programas." | Out-Null
+    $u = W-Input "Nombre de usuario (p. ej. ana)"
+    $p1 = W-Input "Contraseña" -Secret
+    $p2 = W-Input "Repite la contraseña" -Secret
+    $msg = W-Label "" -Reserve 2 9.5 -color $W.naranja
     $W.u = $u; $W.p1 = $p1; $W.p2 = $p2; $W.msg = $msg
     $W.onNext = {
         $name = $W.u.Text.Trim().ToLower()
@@ -307,13 +317,13 @@ function Show-User {
 
 function Show-Token {
     W-Page 3 "Token de acceso"
-    W-Label "Tu token de acceso" 24 14 -Bold | Out-Null
+    W-Label "Tu token de acceso" 14 -Bold | Out-Null
     $W.onBack = { Show-User }
     $saved = if ($W.demo) { "" } else { W-Wsl @("-d", $W.distro, "--", "bash", "-c", "test -s ~/.schismlab/credentials/github_token && echo si") }
-    W-Label "El código de SCHISMlab está en un repositorio privado. Pega aquí el token personal que te ha dado el profesor (empieza por github_pat_). Es solo para ti: no lo compartas. Se guarda solo en este ordenador." 66 | Out-Null
-    $t = W-Input "Token (botón derecho $Fl Pegar, o Ctrl+V)" 136 -Secret
+    W-Label "El código de SCHISMlab está en un repositorio privado. Pega aquí el token personal que te ha dado el profesor (empieza por github_pat_). Es solo para ti: no lo compartas. Se guarda solo en este ordenador." | Out-Null
+    $t = W-Input "Token (botón derecho $Fl Pegar, o Ctrl+V)" -Secret
     $W.tok = $t
-    $W.msg = W-Label "" 200 9.5 -color $W.naranja
+    $W.msg = W-Label "" -Reserve 2 9.5 -color $W.naranja
     if ($saved -eq "si") { $W.msg.ForeColor = $W.gris; $W.msg.Text = "Ya hay un token guardado en Ubuntu: deja la casilla vacía para usarlo." }
     $W.saved = ($saved -eq "si")
     $W.onNext = {
@@ -342,20 +352,20 @@ function Show-Token {
 
 function Show-Install {
     W-Page 4 "Instalación" "Instalando…" -NoBack
-    W-Label "Instalando $($W.edition)" 24 14 -Bold | Out-Null
-    W-Label "Tarda 10-30 minutos (más si hay que compilar SCHISM). No hace falta que hagas nada; puedes minimizar la ventana, pero no la cierres." 62 | Out-Null
+    W-Label "Instalando $($W.edition)" 14 -Bold | Out-Null
+    W-Label "Tarda 10-30 minutos (más si hay que compilar SCHISM). No hace falta que hagas nada; puedes minimizar la ventana, pero no la cierres." | Out-Null
     $W.next.Enabled = $false
     $bar = New-Object Windows.Forms.ProgressBar
-    $bar.Left = 28; $bar.Top = 112; $bar.Width = 660; $bar.Height = 14; $bar.Style = "Marquee"; $bar.MarqueeAnimationSpeed = 30
-    $W.body.Controls.Add($bar)
-    $W.phase = W-Label "Preparando Ubuntu…" 134 9.5 -color $W.gris
-    $W.logBox = W-Log 162 190
+    $bar.Left = 28; $bar.Top = $W.y; $bar.Width = 660; $bar.Height = 14; $bar.Style = "Marquee"; $bar.MarqueeAnimationSpeed = 30
+    $W.body.Controls.Add($bar); $W.y = $bar.Bottom + 8
+    $W.phase = W-Label "Preparando Ubuntu…" 9.5 -color $W.gris -Reserve 1 -gap 4
+    $W.logBox = W-Log 400
     if ($W.token) { $env:SCHISMLAB_TOKEN = $W.token; if ($env:WSLENV -notmatch 'SCHISMLAB_TOKEN') { $env:WSLENV = (@($env:WSLENV, "SCHISMLAB_TOKEN/u") | Where-Object { $_ }) -join ":" } }
     $env:SCHISMLAB_NO_PREGUNTAR = "1"                       # sin terminal: instalar.sh no puede preguntar nada
     if ($env:WSLENV -notmatch 'SCHISMLAB_NO_PREGUNTAR') { $env:WSLENV = (@($env:WSLENV, "SCHISMLAB_NO_PREGUNTAR/u") | Where-Object { $_ }) -join ":" }
     $user = { W-Run "instalar" "wsl.exe" @("-d", $W.distro, "--", "bash", "-lc", "`"export PYTHONUNBUFFERED=1; curl -fsSL '$Url' -o /tmp/instalar_schismlab.sh && bash /tmp/instalar_schismlab.sh $Variant`"") { param($code) if ($code -eq 0) { Show-Done } else { Show-Failed $code } } }
     if ($W.demo) {
-        W-Run "demo" "cmd.exe" @("/c", "for /l %i in (1,1,6) do @(echo ^>^> paso de demostracion %i & ping -n 2 127.0.0.1 >nul)") { param($code) Show-Done }
+        W-Run "demo" "cmd.exe" @("/c", "for /l %i in (1,1,6) do @(echo ^>^> paso de demostracion %i & ping -n 2 127.0.0.1 >nul)") { param($code) if ($code -eq 0) { Show-Done } else { Show-Failed $code } }
         return
     }
     # paquetes del sistema como root (sin contraseña): así instalar.sh e install.sh no necesitan sudo
@@ -370,13 +380,13 @@ function Show-Done {
     W-Page 5 "Listo" "Terminar" -NoBack
     $env:SCHISMLAB_TOKEN = $null
     Remove-Shortcut $ContinueName
-    W-Label "$MarkOk $($W.edition) está instalado" 24 14 -Bold -color $W.verde | Out-Null
-    W-Label "Para abrirlo, haz doble clic en el icono «SCHISMlab» del escritorio o del menú Inicio (se puede anclar a la barra de tareas). Se abre en el navegador, sin ninguna ventana negra." 70 | Out-Null
-    W-Label "Para cerrarlo: en SCHISMlab, menú ⋮ (arriba a la derecha) $Fl Cerrar SCHISMlab. Si algo falla, el menú ⋮ $Fl Registro dice por qué." 136 | Out-Null
-    W-Label "Está en el Ubuntu «$($W.distro)». Para borrarlo entero, abre otra vez este instalador $Fl «Borrar una instalación de SCHISMlab»." 250 9.5 -color $W.gris | Out-Null
+    W-Label "$MarkOk $($W.edition) está instalado" 14 -Bold -color $W.verde | Out-Null
+    W-Label "Para abrirlo, haz doble clic en el icono «SCHISMlab» del escritorio o del menú Inicio (se puede anclar a la barra de tareas). Se abre en el navegador, sin ninguna ventana negra." | Out-Null
+    W-Label "Para cerrarlo: en SCHISMlab, menú ⋮ (arriba a la derecha) $Fl Cerrar SCHISMlab. Si algo falla, el menú ⋮ $Fl Registro dice por qué." | Out-Null
+    W-Label "Está en el Ubuntu «$($W.distro)». Para borrarlo entero, abre otra vez este instalador $Fl «Borrar una instalación de SCHISMlab»." 9.5 -color $W.gris | Out-Null
     $c = New-Object Windows.Forms.CheckBox
-    $c.Text = "Abrir SCHISMlab ahora"; $c.Checked = $true; $c.Left = 28; $c.Top = 200; $c.Width = 400
-    $c.Font = New-Object Drawing.Font("Segoe UI", 10); $W.body.Controls.Add($c); $W.openNow = $c
+    $c.Text = "Abrir SCHISMlab ahora"; $c.Checked = $true; $c.Left = 28; $c.Top = $W.y; $c.AutoSize = $true
+    $c.Font = New-Object Drawing.Font("Segoe UI", 10); $W.body.Controls.Add($c); $W.openNow = $c; $W.y = $c.Bottom + 14
     $W.cancel.Visible = $false
     $W.onNext = {
         if ($W.openNow.Checked -and -not $W.demo) {
@@ -391,11 +401,11 @@ function Show-Done {
 function Show-Failed($code) {
     W-Page 4 "La instalación se ha parado" "Reintentar" -NoBack
     $env:SCHISMLAB_TOKEN = $null
-    W-Label "La instalación se ha parado" 24 14 -Bold -color $W.naranja | Out-Null
-    W-Label "El motivo suele estar en las últimas líneas. Si se cortó la conexión, pulsa Reintentar: sigue por donde iba. Si se repite, manda el registro completo al profesor." 64 | Out-Null
-    $box = W-Log 124 190
+    W-Label "La instalación se ha parado" 14 -Bold -color $W.naranja | Out-Null
+    W-Label "El motivo suele estar en las últimas líneas. Si se cortó la conexión, pulsa Reintentar: sigue por donde iba. Si se repite, manda el registro completo al profesor." | Out-Null
+    $box = W-Log 230
     try { $box.Text = ((Get-Content $W.fullLog -Tail 40 -Encoding UTF8) -join "`r`n"); $box.SelectionStart = $box.TextLength; $box.ScrollToCaret() } catch {}
-    $b = W-Button "Abrir el registro completo" 28 326 240
+    $b = W-Button "Abrir el registro completo" 240
     $b.Add_Click({ Start-Process notepad.exe $W.fullLog })
     $W.onNext = { Show-Token }
 }
